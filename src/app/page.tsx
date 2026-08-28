@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type Tool = "ironbrew" | "moonsec" | "prometheus";
+type Tool = "moonsec" | "prometheus";
 
 interface DeobfResponse {
   tool: string;
@@ -15,12 +15,6 @@ interface DeobfResponse {
 }
 
 const TOOLS: { id: Tool; label: string; desc: string; input: string }[] = [
-  {
-    id: "ironbrew",
-    label: "Ironbrew2",
-    desc: "Email bytecode (luac)",
-    input: "Lua source obfuscated by Ironbrew2",
-  },
   {
     id: "moonsec",
     label: "MoonSec V3",

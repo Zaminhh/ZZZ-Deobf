@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-type Tool = "ironbrew" | "moonsec" | "prometheus";
+type Tool = "moonsec" | "prometheus";
 
 interface DeobfRequest {
   tool: Tool;
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     if (!tool || !code) {
       return NextResponse.json({ error: "Missing tool or code" }, { status: 400 });
     }
-    if (!["ironbrew", "moonsec", "prometheus"].includes(tool)) {
+    if (!["moonsec", "prometheus"].includes(tool)) {
       return NextResponse.json({ error: "Invalid tool" }, { status: 400 });
     }
 
@@ -66,14 +66,7 @@ export async function POST(req: NextRequest) {
 
     let result: { outFile: string; isBinary: boolean; stdout: string; stderr: string } | null = null;
 
-    if (tool === "ironbrew") {
-      const bin = path.join(rtBase, "ib2", "IronbrewDeobfuscator");
-      const outFile = path.join(workDir, "output.luac");
-      const r = await runCommand(bin, ["deobf", "-t", "ib2", "-f", inFile, "-o", outFile], {
-        env: { ...process.env, DOTNET_BUNDLE_EXTRACT_BASE_DIR: os.tmpdir(), HOME: os.tmpdir() },
-      });
-      result = { outFile, isBinary: true, stdout: r.stdout, stderr: r.stderr };
-    } else if (tool === "moonsec") {
+    if (tool === "moonsec") {
       const bin = path.join(rtBase, "moonsec", "MoonsecDeobfuscator");
       const outFile = path.join(workDir, "output.lua");
       // structured decompiler reconstructs readable Lua source
