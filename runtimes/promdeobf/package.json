@@ -1,0 +1,8 @@
+{
+  "name": "promdeobf",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "luau-web": "^1.4.0"
+  }
+}

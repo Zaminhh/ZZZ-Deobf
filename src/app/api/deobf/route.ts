@@ -78,15 +78,14 @@ export async function POST(req: NextRequest) {
       const r = await runCommand(bin, ["-dis", "-i", inFile, "-o", outFile], {});
       result = { outFile, isBinary: false, stdout: r.stdout, stderr: r.stderr };
     } else if (tool === "prometheus") {
-      const luaDir = path.join(rtBase, "lua");
-      const luajit = path.join(luaDir, "luajit");
-      const cli = path.join(luaDir, "deob", "cli.lua");
+      const promDir = path.join(process.cwd(), "runtimes", "promdeobf");
+      const mainJs = path.join(promDir, "main.js");
       const outFile = path.join(workDir, "output.lua");
-      const r = await runCommand(
-        luajit,
-        [cli, inFile, "--out", outFile, "--trace", "off"],
-        { cwd: luaDir, env: { ...process.env, DYLD_LIBRARY_PATH: luaDir, LD_LIBRARY_PATH: luaDir } }
-      );
+      // main.js may write temp files relative to cwd -> run inside the promdeobf dir
+      const r = await runCommand(process.execPath, [mainJs, inFile, outFile], {
+        cwd: promDir,
+        env: { ...process.env, NODE_PATH: path.join(promDir, "node_modules") },
+      });
       result = { outFile, isBinary: false, stdout: r.stdout, stderr: r.stderr };
     }
 
