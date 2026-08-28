@@ -345,8 +345,7 @@ var formatStatementList = function(body, indent = 0) {
 
     for (let stat of stats) {
         i++
-        const isComment = stat.startsWith("--")
-        joined += stat + (!isComment ? ";" : "") + (i == length ? "" : "\n" + tab)
+        joined += stat + (i == length ? "" : "\n" + tab)
     }
 
     //console.log(joined.substring(0, joined.length - ("\n" + tab).length))

@@ -33,6 +33,7 @@ do valid = true end
 const fs = require("fs").promises
 
 const beautify = require("./mods/beautifier"), { parse, defaultOptions } = require("./mods/luaparse"), simpleAst = require("./mods/simple-ast");
+const finalCleaner = require("./mods/finalCleaner")
 const { inline, setInlineOptions } = require("./mods/inlinev4"),
     localify = require("./mods/localify")
 const { is, search, searchIs, print } = require("./mods/helper");
@@ -405,8 +406,10 @@ const deobfuscate = async (path, outFile="out.lua") => {
     }
 
     print("Done in",(performance.now() - start).toFixed(2),"ms.")
-    await fs.writeFile(outFile, beautify(
-        [
+
+    const finalAst = finalCleaner({
+        type: "Chunk",
+        body: [
             {
                 type: "LocalStatement",
                 variables: [ simpleAst.ident("Env") ],
@@ -422,10 +425,18 @@ const deobfuscate = async (path, outFile="out.lua") => {
                 init: [simpleAst.emptyTable()]
             }
         ].concat(output),
-        {
-            solveMath: false
-        }
-    ))
+        solveMath: false
+    })
+
+    let finalSrc = beautify(finalAst, { solveMath: false })
+
+    try {
+        parse(finalSrc)
+    } catch (e) {
+        console.error("Failed final syntax validation:", e.message)
+    }
+
+    await fs.writeFile(outFile, finalSrc)
 }
 
 deobfuscate(process.argv[2], process.argv[3])
