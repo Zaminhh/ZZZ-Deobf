@@ -69,13 +69,17 @@ export async function POST(req: NextRequest) {
     if (tool === "ironbrew") {
       const bin = path.join(rtBase, "ib2", "IronbrewDeobfuscator");
       const outFile = path.join(workDir, "output.luac");
-      const r = await runCommand(bin, ["deobf", "-t", "ib2", "-f", inFile, "-o", outFile], {});
+      const r = await runCommand(bin, ["deobf", "-t", "ib2", "-f", inFile, "-o", outFile], {
+        env: { ...process.env, DOTNET_BUNDLE_EXTRACT_BASE_DIR: os.tmpdir(), HOME: os.tmpdir() },
+      });
       result = { outFile, isBinary: true, stdout: r.stdout, stderr: r.stderr };
     } else if (tool === "moonsec") {
       const bin = path.join(rtBase, "moonsec", "MoonsecDeobfuscator");
       const outFile = path.join(workDir, "output.txt");
       // use -dis for readable text output
-      const r = await runCommand(bin, ["-dis", "-i", inFile, "-o", outFile], {});
+      const r = await runCommand(bin, ["-dis", "-i", inFile, "-o", outFile], {
+        env: { ...process.env, DOTNET_BUNDLE_EXTRACT_BASE_DIR: os.tmpdir(), HOME: os.tmpdir() },
+      });
       result = { outFile, isBinary: false, stdout: r.stdout, stderr: r.stderr };
     } else if (tool === "prometheus") {
       const promDir = path.join(process.cwd(), "runtimes", "promdeobf");
