@@ -1,0 +1,130 @@
+import { NextRequest, NextResponse } from "next/server";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+
+const execFileAsync = promisify(execFile);
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
+type Tool = "ironbrew" | "moonsec" | "prometheus";
+
+interface DeobfRequest {
+  tool: Tool;
+  code: string;
+}
+
+function runtimeDir(): string {
+  // on macOS process.platform is "darwin", but our folder is "osx"; on Vercel it's linux
+  const folder = process.platform === "darwin" ? "osx" : "linux";
+  return path.join(process.cwd(), "runtimes", folder);
+}
+
+function runtimesExist(): { osx: boolean; linux: boolean; current: string } {
+  const osx = fs.existsSync(path.join(process.cwd(), "runtimes", "osx"));
+  const linux = fs.existsSync(path.join(process.cwd(), "runtimes", "linux"));
+  return { osx, linux, current: process.platform };
+}
+
+async function runCommand(cmd: string, args: string[], opts: any): Promise<{ stdout: string; stderr: string }> {
+  try {
+    const r = await execFileAsync(cmd, args, { ...opts, maxBuffer: 64 * 1024 * 1024, timeout: 55000 });
+    const stdout = Buffer.isBuffer(r.stdout) ? r.stdout.toString("utf-8") : String(r.stdout);
+    const stderr = Buffer.isBuffer(r.stderr) ? r.stderr.toString("utf-8") : String(r.stderr);
+    return { stdout, stderr };
+  } catch (e: any) {
+    const err = e as any;
+    const s1 = Buffer.isBuffer(err.stdout) ? err.stdout.toString("utf-8") : String(err.stdout || "");
+    const s2 = Buffer.isBuffer(err.stderr) ? err.stderr.toString("utf-8") : String(err.stderr || "");
+    return { stdout: s1, stderr: s2 || (err.message || String(e)) };
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = (await req.json()) as DeobfRequest;
+    const tool = body?.tool;
+    const code = body?.code ?? "";
+
+    if (!tool || !code) {
+      return NextResponse.json({ error: "Missing tool or code" }, { status: 400 });
+    }
+    if (!["ironbrew", "moonsec", "prometheus"].includes(tool)) {
+      return NextResponse.json({ error: "Invalid tool" }, { status: 400 });
+    }
+
+    const rt = runtimesExist();
+
+    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "deobf-"));
+    const inFile = path.join(workDir, "input.lua");
+    fs.writeFileSync(inFile, code, "utf-8");
+
+    const rtBase = runtimeDir();
+
+    let result: { outFile: string; isBinary: boolean; stdout: string; stderr: string } | null = null;
+
+    if (tool === "ironbrew") {
+      const bin = path.join(rtBase, "ib2", "IronbrewDeobfuscator");
+      const outFile = path.join(workDir, "output.luac");
+      const r = await runCommand(bin, ["deobf", "-t", "ib2", "-f", inFile, "-o", outFile], {});
+      result = { outFile, isBinary: true, stdout: r.stdout, stderr: r.stderr };
+    } else if (tool === "moonsec") {
+      const bin = path.join(rtBase, "moonsec", "MoonsecDeobfuscator");
+      const outFile = path.join(workDir, "output.txt");
+      // use -dis for readable text output
+      const r = await runCommand(bin, ["-dis", "-i", inFile, "-o", outFile], {});
+      result = { outFile, isBinary: false, stdout: r.stdout, stderr: r.stderr };
+    } else if (tool === "prometheus") {
+      const luaDir = path.join(rtBase, "lua");
+      const luajit = path.join(luaDir, "luajit");
+      const cli = path.join(luaDir, "deob", "cli.lua");
+      const outFile = path.join(workDir, "output.lua");
+      const r = await runCommand(
+        luajit,
+        [cli, inFile, "--out", outFile, "--trace", "off"],
+        { cwd: luaDir, env: { ...process.env, DYLD_LIBRARY_PATH: luaDir, LD_LIBRARY_PATH: luaDir } }
+      );
+      result = { outFile, isBinary: false, stdout: r.stdout, stderr: r.stderr };
+    }
+
+    if (!result) {
+      return NextResponse.json({ error: "Unknown tool" }, { status: 400 });
+    }
+
+    const outExists = fs.existsSync(result.outFile);
+
+    let outputText = "";
+    let outputBase64: string | null = null;
+    if (outExists) {
+      const data = fs.readFileSync(result.outFile);
+      if (result.isBinary) {
+        outputBase64 = data.toString("base64");
+      } else {
+        outputText = data.toString("utf-8");
+      }
+    }
+
+    const cleanup = () => {
+      try {
+        fs.rmSync(workDir, { recursive: true, force: true });
+      } catch {}
+    };
+    cleanup();
+
+    return NextResponse.json({
+      tool,
+      ok: outExists,
+      isBinary: result.isBinary,
+      outputText,
+      outputBase64,
+      log: result.stdout,
+      err: result.stderr,
+      platformsProbed: rt,
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: String(e && e.message ? e.message : e) }, { status: 500 });
+  }
+}
